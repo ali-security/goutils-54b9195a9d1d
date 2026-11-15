@@ -1,10 +1,16 @@
 language: go
 
 go:
-  - 1.6
-  - 1.7
+  - 1.6.4
+  - 1.7.6
   - 1.8
-  - tip
+  - 1.11.2
+
+go_import_path: github.com/Masterminds/goutils
+
+install:
+  - go version
+  - go env
 
 script:
   - go test -v

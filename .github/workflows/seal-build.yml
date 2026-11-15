@@ -1,0 +1,56 @@
+# Build-and-pack only: the test suite runs on Travis (.travis.yml).
+# Produces the module zip exactly as proxy.golang.org serves it.
+name: seal-build
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Pack module zip
+        run: |
+          set -euo pipefail
+          helper="$RUNNER_TEMP/zipper"
+          mkdir -p "$helper" "$RUNNER_TEMP/src" dist
+          cat > "$helper/main.go" <<'GO'
+          package main
+
+          import (
+          	"log"
+          	"os"
+
+          	"golang.org/x/mod/module"
+          	"golang.org/x/mod/zip"
+          )
+
+          func main() {
+          	m := module.Version{Path: os.Args[1], Version: os.Args[2]}
+          	f, err := os.Create(os.Args[4])
+          	if err != nil {
+          		log.Fatal(err)
+          	}
+          	defer f.Close()
+          	if err := zip.CreateFromDir(f, m, os.Args[3]); err != nil {
+          		log.Fatal(err)
+          	}
+          	log.Printf("created module zip: %s", os.Args[4])
+          }
+          GO
+          (cd "$helper" && go mod init example.com/zipper && go get golang.org/x/mod@latest)
+          # Pack from a copy of the tree without .git and the .github/ dir this
+          # workflow lives in (upstream ships no .github/, so it must not enter the zip).
+          tar --exclude=./.git --exclude=./.github --exclude=./dist -cf - . | tar -xf - -C "$RUNNER_TEMP/src"
+          (cd "$helper" && go run . github.com/Masterminds/goutils v1.1.0 "$RUNNER_TEMP/src" "$GITHUB_WORKSPACE/dist/v1.1.0.zip")
+          unzip -l dist/v1.1.0.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module-zip
+          path: dist/v1.1.0.zip
+          if-no-files-found: error
